@@ -7,4 +7,4 @@ gold = yf.download(
     interval="1d"
 )
 
-print(gold.head())
+gold.to_csv("GLD.csv")
