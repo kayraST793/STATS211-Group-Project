@@ -36,6 +36,7 @@ from pathlib import Path
 import numpy as np
 import pandas as pd
 import matplotlib
+from scipy.stats import gaussian_kde
 matplotlib.use("Agg")
 import matplotlib.pyplot as plt
 
@@ -176,9 +177,13 @@ if __name__ == "__main__":
         nu_pooled_draws[label] = np.concatenate(param_chains["nu"])
 
     # 5. Compare p(nu | data, lambda) across the three lambda values ---------
+    all_nu = np.concatenate(list(nu_pooled_draws.values()))
+    x_grid = np.linspace(all_nu.min(), all_nu.max(), 500)
+
     plt.figure()
     for _, label in experiments:
-        plt.hist(nu_pooled_draws[label], bins=50, density=True, alpha=0.5, label=label)
+        density = gaussian_kde(nu_pooled_draws[label])(x_grid)
+        plt.plot(x_grid, density, label=label)
     plt.xlabel("nu")
     plt.ylabel("density")
     plt.title("Posterior of nu across prior lambda (nu_rate) values")
