@@ -116,17 +116,44 @@ The posterior mean for `ν` near 4 reflects the heavy-tailed nature of the data,
 
 **Output files:**
 
-Each chain writes its draws to a separate CSV file:
-- `results/mcmc/chain_1.csv`
-- `results/mcmc/chain_2.csv`
-- `results/mcmc/chain_3.csv`
-- `results/mcmc/chain_4.csv`
+As described in Section 7 below, `src/run_mcmc.py` actually runs this 4-chain experiment three times, once per value of the `ν` prior's rate hyperparameter `λ` (`nu_rate`). Each chain writes its draws to a separate CSV file, organized into one subdirectory per `λ`:
+
+- `results/mcmc/lambda_0.10/chain_1.csv` .. `chain_4.csv` — **baseline model** (`nu_rate = 0.1`, the value used everywhere else in this doc and the code's default hyperparameter)
+- `results/mcmc/lambda_0.05/chain_1.csv` .. `chain_4.csv` — sensitivity-analysis alternative (lower rate, heavier-tailed `ν` prior)
+- `results/mcmc/lambda_0.20/chain_1.csv` .. `chain_4.csv` — sensitivity-analysis alternative (higher rate, lighter-tailed `ν` prior)
+
+A reader who just wants "the model" (not the sensitivity sweep) should use `results/mcmc/lambda_0.10/`.
 
 Each file has columns `mu, sigma, nu, is_burnin` (20000 rows per chain). The `is_burnin` boolean flag allows downstream consumers (Person 3 and 4) to easily exclude the first 5000 burn-in draws and focus on the post-burn-in posteriors.
+
+## 7. Convergence Diagnostics and Prior-Sensitivity Analysis
+
+**Diagnostics module.** `src/diagnostics.py` implements the convergence diagnostics used to validate each of the three experiments above before comparing them:
+
+- **`r_hat`** — the classic Gelman-Rubin potential scale reduction factor, computed across the 4 chains for a given parameter. Values near 1.0 indicate the chains have converged to the same distribution; the conventional threshold for concern is `r_hat > 1.1`.
+- **`effective_sample_size`** — effective sample size for a single chain, computed via Geyer's initial monotone sequence method (summing consecutive pairs of lag-`t` autocorrelations and stopping at the first pair whose sum goes negative). This corrects the nominal draw count for autocorrelation in the chain.
+- **`trace_plot`** — overlays the per-chain traces for a parameter and saves the figure, for visual inspection of mixing.
+- **`summarize_posterior`** — pools the post-burn-in draws across all 4 chains to report mean/sd/95% CI, alongside `r_hat` and `ess` for that parameter. **Note:** the `ess` value it reports is the *average* of `effective_sample_size` across the 4 individual chains, not a sum across chains — a per-chain figure, not a total pooled ESS.
+
+**Diagnostic results (all three λ values).** Across all three experiments (`λ = 0.05, 0.10, 0.20`), `r_hat` for `μ`, `σ`, and `ν` ranged from approximately 0.9998 to 1.0003 — well under the 1.1 threshold, indicating excellent convergence of all 4 chains in every experiment. Per-chain effective sample size (as computed/averaged by `summarize_posterior`, i.e. per chain, not summed across the 4 chains) ranged roughly from 1200 to 3200 draws per chain, out of 15000 post-burn-in draws per chain — consistent with the moderate autocorrelation expected from a random-walk Metropolis sampler.
+
+**Motivation for the sensitivity analysis.** The prior for `ν` (Section 2) has a rate hyperparameter `λ` that was set to `0.1` somewhat arbitrarily. Because the central scientific conclusion of this model is that GLD returns are heavy-tailed (small `ν`), it's important to check that this conclusion is a feature of the data and likelihood, not an artifact of how we happened to set `λ`. `src/run_mcmc.py` therefore reruns the full 4-chain experiment at `λ = 0.05` and `λ = 0.20` — a 4x range around the baseline — and compares the resulting posteriors for `ν`.
+
+**Sensitivity result.** Pooled post-burn-in posterior summary for `ν`, by `λ`:
+
+| λ (nu_rate) | mean(ν) | sd(ν) | 95% CI(ν) |
+|---|---|---|---|
+| 0.05 | ≈4.036 | ≈0.654 | ≈[2.99, 5.52] |
+| 0.10 (baseline) | ≈4.026 | ≈0.652 | ≈[2.98, 5.51] |
+| 0.20 | ≈3.965 | ≈0.629 | ≈[2.96, 5.42] |
+
+**Conclusion:** the posterior for `ν` is essentially insensitive to this prior choice across a 4x range of `λ` — all three 95% CIs overlap almost completely. The heavy-tails conclusion (`ν ≈ 4`, well below a near-normal `ν ≥ 30`) is therefore robust to this prior specification, not an artifact of the particular rate chosen.
+
+**Caveat for Person 4 (VaR/ES):** the posterior 95% CI for `ν` ([2.98, 5.51] at baseline) sits close to the prior's hard support boundary at `ν = 2` (required for finite variance) — the committed MCMC draws reach as low as `ν ≈ 2.31`. This is a genuinely heavy-tailed, finite-but-high-kurtosis regime, not a near-normal one. Person 4 should expect tail risk (VaR/ES) under this model to exceed, likely substantially, what a normal-distribution assumption would predict.
 
 ---
 
 **References:**
 
 - **Person 1 (EDA):** Summary statistics and Q-Q plot analysis in `src/eda.py`
-- **Model implementation:** Likelihood and priors in `src/model.py`; sampler in `src/mcmc.py`; driver in `src/run_mcmc.py`
+- **Model implementation:** Likelihood and priors in `src/model.py`; sampler in `src/mcmc.py`; driver (3-experiment λ sweep) in `src/run_mcmc.py`; convergence diagnostics and posterior summaries (R-hat, effective sample size, trace plots) in `src/diagnostics.py`
