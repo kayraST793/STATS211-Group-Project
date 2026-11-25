@@ -1,6 +1,6 @@
 import numpy as np
 from scipy import stats
-from src.mcmc import propose_sigma, propose_nu, run_chain
+from src.mcmc import propose_sigma, propose_nu, run_chain, run_multiple_chains
 
 
 def test_propose_sigma_always_positive():
@@ -65,3 +65,21 @@ def test_two_chains_different_seeds_diverge():
     out_b = run_chain(data, HYPER, INIT, n_iter=200, n_burnin=100,
                        init_steps=STEPS, rng=np.random.default_rng(2))
     assert not np.allclose(out_a["mu"], out_b["mu"])
+
+
+def test_run_multiple_chains_returns_one_result_per_seed():
+    data = np.random.default_rng(0).standard_t(df=6, size=100) * 0.02
+    inits = [dict(mu=0.0, sigma=0.01, nu=4.0), dict(mu=0.0, sigma=0.04, nu=20.0)]
+    seeds = [1, 2]
+    results = run_multiple_chains(data, HYPER, inits, n_iter=300, n_burnin=100,
+                                   init_steps=STEPS, seeds=seeds)
+    assert len(results) == 2
+    assert not np.allclose(results[0]["mu"], results[1]["mu"])
+
+
+def test_run_multiple_chains_rejects_mismatched_lengths():
+    import pytest
+    data = np.array([0.01, -0.01])
+    with pytest.raises(ValueError):
+        run_multiple_chains(data, HYPER, [dict(mu=0.0, sigma=0.01, nu=4.0)],
+                             n_iter=10, n_burnin=5, init_steps=STEPS, seeds=[1, 2])

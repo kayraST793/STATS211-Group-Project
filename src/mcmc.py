@@ -173,3 +173,43 @@ def run_chain(data: np.ndarray, hyperparams: dict, init: dict, n_iter: int,
         "accept_rate": accept_rate,
         "final_steps": steps,
     }
+
+
+def run_multiple_chains(data: np.ndarray, hyperparams: dict, inits: list[dict],
+                         n_iter: int, n_burnin: int, init_steps: dict,
+                         seeds: list[int], tune_every: int = 50,
+                         target_accept: float = 0.44) -> list[dict]:
+    """
+    Run several independent Metropolis-within-Gibbs chains, one per
+    (init, seed) pair, each with its own numpy Generator.
+
+    Parameters:
+    - data: observed returns
+    - hyperparams: dict with keys mu0, tau0, s0, nu_shift, nu_rate
+    - inits: list of dicts, each with keys mu, sigma, nu (starting values)
+    - n_iter: total number of sweeps to run per chain (including burn-in)
+    - n_burnin: number of initial sweeps per chain treated as burn-in
+    - init_steps: dict with keys mu, sigma, nu (initial random-walk step sizes)
+    - seeds: list of ints, one per chain, used to seed each chain's rng
+    - tune_every: adapt step sizes every this many sweeps during burn-in
+    - target_accept: target acceptance rate for step-size adaptation
+
+    Returns:
+    - list of run_chain-shaped result dicts, one per (init, seed) pair,
+      in the same order as inits/seeds.
+    """
+    if len(inits) != len(seeds):
+        raise ValueError(
+            f"inits and seeds must have the same length, got "
+            f"{len(inits)} inits and {len(seeds)} seeds"
+        )
+
+    results = []
+    for init, seed in zip(inits, seeds):
+        rng = np.random.default_rng(seed)
+        result = run_chain(data, hyperparams, init, n_iter, n_burnin,
+                            init_steps, rng, tune_every=tune_every,
+                            target_accept=target_accept)
+        results.append(result)
+
+    return results
