@@ -171,8 +171,11 @@ if __name__ == "__main__":
         for i, result in enumerate(results, start=1):
             print(f"  chain {i} accept_rate = {result['accept_rate']}")
 
-        trace_plot(param_chains["nu"], f"nu trace ({label})",
-                   FIGURES_DIR / f"trace_nu_{label}.png")
+        trace_plot(
+            param_chains["nu"], "Degrees of freedom (nu)",
+            FIGURES_DIR / f"trace_nu_{label}.png",
+            title=f"Degrees of Freedom (nu) Trace — lambda = {nu_rate}",
+        )
 
         nu_pooled_draws[label] = np.concatenate(param_chains["nu"])
 

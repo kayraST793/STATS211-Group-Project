@@ -81,20 +81,25 @@ def effective_sample_size(chain: np.ndarray) -> float:
     return float(ess)
 
 
-def trace_plot(chains: list[np.ndarray], param_name: str, out_path: Path) -> None:
+def trace_plot(chains: list[np.ndarray], param_name: str, out_path: Path,
+                title: str | None = None) -> None:
     """
     Plot one line per chain over iteration index and save to out_path.
 
     Parameters:
     - chains: list of 1-D arrays, one per chain
-    - param_name: used as the plot title
+    - param_name: the sampled quantity being traced; used as the y-axis
+      label and, if `title` is not given, as the plot title
     - out_path: file path to save the figure to
+    - title: optional plot title; defaults to f"Trace plot: {param_name}"
     """
     plt.figure()
     for i, chain in enumerate(chains):
         plt.plot(chain, linewidth=0.5, label=f"chain {i}")
+    plt.xlabel("MCMC iteration (sweep)")
+    plt.ylabel(param_name)
     plt.legend()
-    plt.title(param_name)
+    plt.title(title if title is not None else f"Trace plot: {param_name}")
     plt.savefig(out_path, dpi=150)
     plt.close()
 
