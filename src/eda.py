@@ -97,6 +97,7 @@ Time Series Observations:
   which assumes a constant scale parameter over time.
 """
 
+
 # 4. Histogram and Normal Distribution Comparison---------------------
 # Fit a normal distribution using the sample mean and std
 mu, sigma = norm.fit(returns)
@@ -167,4 +168,10 @@ Q-Q Plot Observations:
 - These deviations suggest heavy tails and support evaluating
   the Student-t model, although its suitability requires validation.
 """
+
+
+# 6. Plot of the Residuals-----------------------------------
+# Plot the residuals once the Bayesian Student-t model
+# has been fitted (Person 2). Examine the residuals for systematic patterns,
+# changing volatility, and potential model misspecification.
 
