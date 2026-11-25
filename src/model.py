@@ -43,7 +43,7 @@ def log_prior_mu(mu: float, mu0: float, tau0: float) -> float:
 
 def log_prior_sigma(sigma: float, s0: float) -> float:
     """
-    Log-prior for sigma: Half-Normal distribution (exponential on positive line).
+    Log-prior for sigma: Half-Normal distribution with scale s0.
 
     Parameters:
     - sigma: scale parameter
@@ -55,8 +55,8 @@ def log_prior_sigma(sigma: float, s0: float) -> float:
     if sigma <= 0:
         return -np.inf
 
-    # Half-normal log-pdf: log(2) - 0.5*log(pi*s0^2) - (sigma^2)/(2*s0^2)
-    return np.log(2) - 0.5 * np.log(np.pi * s0 ** 2) - (sigma ** 2) / (2 * s0 ** 2)
+    # Half-normal log-pdf: 0.5*log(2) - 0.5*log(pi*s0^2) - (sigma^2)/(2*s0^2)
+    return 0.5 * np.log(2) - 0.5 * np.log(np.pi * s0 ** 2) - (sigma ** 2) / (2 * s0 ** 2)
 
 
 def log_prior_nu(nu: float, shift: float, rate: float) -> float:

@@ -27,6 +27,11 @@ def test_log_prior_mu_matches_normal_logpdf():
     assert np.isclose(log_prior_mu(0.02, 0.0, 0.05), norm.logpdf(0.02, 0.0, 0.05))
 
 
+def test_log_prior_sigma_matches_halfnorm_logpdf():
+    from scipy.stats import halfnorm
+    assert np.isclose(log_prior_sigma(0.03, 0.05), halfnorm.logpdf(0.03, scale=0.05))
+
+
 def test_log_prior_sigma_rejects_nonpositive():
     assert log_prior_sigma(0.0, 0.05) == -np.inf
     assert log_prior_sigma(-1.0, 0.05) == -np.inf
