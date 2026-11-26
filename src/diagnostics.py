@@ -29,9 +29,14 @@ def r_hat(chains: list[np.ndarray]) -> float:
     - chains: list of 1-D arrays, all the same length n
 
     Returns:
-    - sqrt(((n-1)/n * W + B/n) / W)
+    - sqrt(((n-1)/n * W + B/n) / W), or NaN if fewer than 2 chains are
+      given (R-hat is undefined with a single chain -- there is no
+      between-chain variance to compare against)
     """
     m = len(chains)
+    if m < 2:
+        return float("nan")
+
     n = len(chains[0])
 
     chain_means = np.array([chain.mean() for chain in chains])

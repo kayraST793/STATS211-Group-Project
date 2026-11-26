@@ -34,6 +34,7 @@ Outputs:
         each parameter's initial (prior) beliefs
 """
 
+import os
 import sys
 from pathlib import Path
 
@@ -57,8 +58,16 @@ if str(PROJECT_DIR) not in sys.path:
 from src.mcmc import run_multiple_chains  # noqa: E402
 from src.diagnostics import summarize_posterior, trace_plot  # noqa: E402
 
-RESULTS_DIR = PROJECT_DIR / "results" / "mcmc"
-FIGURES_DIR = PROJECT_DIR / "figures" / "mcmc"
+FAST_DEBUG = os.environ.get("RUN_MCMC_FAST") == "1"
+
+# Debug runs write to separate directories so they can never overwrite the
+# real multi-chain results/figures used for the actual analysis.
+if FAST_DEBUG:
+    RESULTS_DIR = PROJECT_DIR / "results" / "mcmc_debug"
+    FIGURES_DIR = PROJECT_DIR / "figures" / "mcmc_debug"
+else:
+    RESULTS_DIR = PROJECT_DIR / "results" / "mcmc"
+    FIGURES_DIR = PROJECT_DIR / "figures" / "mcmc"
 RESULTS_DIR.mkdir(parents=True, exist_ok=True)
 FIGURES_DIR.mkdir(parents=True, exist_ok=True)
 
@@ -93,6 +102,19 @@ SEEDS = [1, 2, 3, 4]
 N_ITER = 20000
 N_BURNIN = 5000
 INIT_STEPS = dict(mu=0.005, sigma=0.3, nu=0.3)
+
+# Fast debug mode (FAST_DEBUG flag set above, before RESULTS_DIR/FIGURES_DIR):
+# `RUN_MCMC_FAST=1 python3 src/run_mcmc.py` runs a single chain on the
+# baseline experiment only, with far fewer iterations, for quick iteration
+# on plots/code. NOT a substitute for the real 4-chain analysis: with 1
+# chain, r_hat is undefined (reported as NaN -- see src/diagnostics.py) and
+# the "multiple independent chains" requirement is not satisfied. Always do
+# a full default run before drawing conclusions.
+if FAST_DEBUG:
+    INITS = INITS[:1]
+    SEEDS = SEEDS[:1]
+    N_ITER = 500
+    N_BURNIN = 100
 
 
 def run_experiment(nu_rate: float, label: str) -> list[dict]:
@@ -143,11 +165,19 @@ def _post_burnin_chains(results: list[dict], param: str) -> list[np.ndarray]:
 
 
 if __name__ == "__main__":
-    experiments = [
-        (0.1, "lambda_0.10"),   # baseline
-        (0.05, "lambda_0.05"),
-        (0.2, "lambda_0.20"),
-    ]
+    if FAST_DEBUG:
+        print(
+            "*** RUN_MCMC_FAST=1: debug mode -- 1 chain, baseline only, "
+            f"n_iter={N_ITER}. NOT the real analysis (r_hat is undefined "
+            "with 1 chain). Run without this flag for the full result. ***"
+        )
+        experiments = [(0.1, "lambda_0.10")]  # baseline only
+    else:
+        experiments = [
+            (0.1, "lambda_0.10"),   # baseline
+            (0.05, "lambda_0.05"),
+            (0.2, "lambda_0.20"),
+        ]
 
     # 4. Run baseline + sensitivity experiments, validate diagnostics --------
     summaries = {}  # label -> {param: summary_dict}
