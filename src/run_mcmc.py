@@ -58,10 +58,11 @@ if str(PROJECT_DIR) not in sys.path:
 from src.mcmc import run_multiple_chains  # noqa: E402
 from src.diagnostics import summarize_posterior, trace_plot  # noqa: E402
 
+# RUN_MCMC_FAST=1 runs a quick single-chain debug pass instead of the real
+# 4-chain analysis (see INITS/SEEDS/N_ITER override below). Debug output
+# goes to separate *_debug directories so it never overwrites real results.
 FAST_DEBUG = os.environ.get("RUN_MCMC_FAST") == "1"
 
-# Debug runs write to separate directories so they can never overwrite the
-# real multi-chain results/figures used for the actual analysis.
 if FAST_DEBUG:
     RESULTS_DIR = PROJECT_DIR / "results" / "mcmc_debug"
     FIGURES_DIR = PROJECT_DIR / "figures" / "mcmc_debug"
@@ -103,13 +104,6 @@ N_ITER = 20000
 N_BURNIN = 5000
 INIT_STEPS = dict(mu=0.005, sigma=0.3, nu=0.3)
 
-# Fast debug mode (FAST_DEBUG flag set above, before RESULTS_DIR/FIGURES_DIR):
-# `RUN_MCMC_FAST=1 python3 src/run_mcmc.py` runs a single chain on the
-# baseline experiment only, with far fewer iterations, for quick iteration
-# on plots/code. NOT a substitute for the real 4-chain analysis: with 1
-# chain, r_hat is undefined (reported as NaN -- see src/diagnostics.py) and
-# the "multiple independent chains" requirement is not satisfied. Always do
-# a full default run before drawing conclusions.
 if FAST_DEBUG:
     INITS = INITS[:1]
     SEEDS = SEEDS[:1]
