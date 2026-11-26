@@ -26,6 +26,10 @@ Outputs:
         per-experiment trace plot of nu
     figures/mcmc/nu_posterior_by_lambda.png
         overlaid pooled post-burn-in nu posterior density by lambda
+    figures/mcmc/acf_{mu,sigma,nu}_lambda_0.10.png
+        autocorrelation function of each parameter (baseline model), used
+        to judge whether thinning is necessary (it is judged against ESS,
+        printed alongside -- see Section 6 below)
     figures/mcmc/prior_vs_posterior.png
         prior vs. posterior density curves for mu, sigma, nu (baseline
         model, lambda=0.10), showing how the observed GLD returns update
@@ -54,7 +58,7 @@ if str(PROJECT_DIR) not in sys.path:
     sys.path.insert(0, str(PROJECT_DIR))
 
 from src.mcmc import run_multiple_chains  # noqa: E402
-from src.diagnostics import summarize_posterior, trace_plot  # noqa: E402
+from src.diagnostics import summarize_posterior, trace_plot, acf_plot  # noqa: E402
 
 # RUN_MCMC_FAST=1 runs a quick debug pass (fewer iterations, baseline
 # experiment only -- see below). Debug output goes to separate *_debug
@@ -215,7 +219,33 @@ if __name__ == "__main__":
         print(f"{label:<14}{nu_summary['mean']:>10.4f}{nu_summary['sd']:>10.4f}"
               f"{nu_summary['ci_2.5']:>10.4f}{nu_summary['ci_97.5']:>10.4f}")
 
-    # 6. Prior vs. posterior comparison for mu, sigma, nu (baseline model) ----
+    # 6. Autocorrelation diagnostic: is thinning necessary? (baseline model) --
+    # Thinning (keeping every k-th draw) only reduces storage -- it never
+    # increases the information content of a chain, so it is judged against
+    # ESS (the effective number of independent draws already in the chain),
+    # not by eye from how many lags the ACF plot takes to decay.
+    print("\n=== Autocorrelation / thinning check (baseline, lambda=0.10) ===")
+    for param in ("mu", "sigma", "nu"):
+        chain = baseline_param_chains[param][0]  # single chain, post-burn-in
+        acf_plot(
+            chain, param,
+            FIGURES_DIR / f"acf_{param}_lambda_0.10.png",
+        )
+
+        n_draws = len(chain)
+        ess = summaries["lambda_0.10"][param]["ess"]
+        ess_ratio = ess / n_draws
+        verdict = (
+            "thinning is unnecessary (ESS is already a healthy fraction of "
+            "the chain; thinning would only discard information, not add any)"
+            if ess_ratio >= 0.05 else
+            "chain is highly autocorrelated relative to its length -- "
+            "consider a longer run (thinning alone would not raise ESS)"
+        )
+        print(f"  {param}: ESS={ess:.0f} / {n_draws} draws "
+              f"({ess_ratio:.1%}) -> {verdict}")
+
+    # 7. Prior vs. posterior comparison for mu, sigma, nu (baseline model) ----
     # Shows how the observed GLD returns update each parameter's prior
     # (initial) beliefs into its posterior (updated) beliefs.
     baseline_mu = np.concatenate(baseline_param_chains["mu"])

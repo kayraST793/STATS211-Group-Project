@@ -1,6 +1,28 @@
 import numpy as np
 
-from src.diagnostics import r_hat, effective_sample_size, summarize_posterior
+from src.diagnostics import (r_hat, autocorrelation, effective_sample_size,
+                             summarize_posterior)
+
+
+def test_autocorrelation_lag_zero_is_one():
+    rng = np.random.default_rng(0)
+    chain = rng.normal(0, 1, size=500)
+    acf = autocorrelation(chain, max_lag=10)
+    assert acf.shape == (11,)
+    assert np.isclose(acf[0], 1.0)
+
+
+def test_autocorrelation_near_zero_for_iid_draws():
+    rng = np.random.default_rng(0)
+    chain = rng.normal(0, 1, size=5000)
+    acf = autocorrelation(chain, max_lag=20)
+    assert np.all(np.abs(acf[1:]) < 0.1)  # iid draws: negligible correlation past lag 0
+
+
+def test_autocorrelation_stays_high_for_random_walk():
+    chain = np.cumsum(np.random.default_rng(0).normal(0, 1, size=5000))
+    acf = autocorrelation(chain, max_lag=20)
+    assert np.all(acf[1:] > 0.5)  # random walk: slow-decaying, strongly positive ACF
 
 
 def test_r_hat_near_one_for_identical_well_mixed_chains():

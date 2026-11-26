@@ -7,8 +7,10 @@ their pooled post-burn-in posterior draws.
 
 Functions:
     r_hat                 -- Gelman-Rubin potential scale reduction factor
+    autocorrelation       -- sample ACF of a chain at lags 0..max_lag
     effective_sample_size -- ESS via Geyer's initial monotone sequence
     trace_plot             -- overlay of per-chain traces, saved to disk
+    acf_plot               -- bar plot of a chain's autocorrelation function
     summarize_posterior    -- pooled mean/sd/CI plus r_hat/ess for one param
 """
 
@@ -51,6 +53,29 @@ def r_hat(chains: list[np.ndarray]) -> float:
     return float(np.sqrt(var_hat / W))
 
 
+def autocorrelation(chain: np.ndarray, max_lag: int) -> np.ndarray:
+    """
+    Sample autocorrelation function (ACF) of a chain at lags 0..max_lag.
+
+    Parameters:
+    - chain: 1-D array of draws
+    - max_lag: highest lag to compute (inclusive)
+
+    Returns:
+    - array of length max_lag + 1; acf[0] == 1.0 by definition, acf[k] is
+      the lag-k autocorrelation (normalized by the lag-0 autocovariance)
+    """
+    n = len(chain)
+    x = chain - chain.mean()
+    var = np.dot(x, x) / n
+
+    acf = np.empty(max_lag + 1)
+    acf[0] = 1.0
+    for lag in range(1, max_lag + 1):
+        acf[lag] = np.dot(x[:-lag], x[lag:]) / (n * var)
+    return acf
+
+
 def effective_sample_size(chain: np.ndarray) -> float:
     """
     Effective sample size via the standard autocorrelation-sum formula,
@@ -65,13 +90,7 @@ def effective_sample_size(chain: np.ndarray) -> float:
     - n / (1 + 2 * sum_of_autocorrelations_up_to_cutoff)
     """
     n = len(chain)
-    x = chain - chain.mean()
-
-    # Autocorrelation at all lags 1..n-1, normalized by lag-0 autocovariance.
-    var = np.dot(x, x) / n
-    autocorr = np.empty(n - 1)
-    for lag in range(1, n):
-        autocorr[lag - 1] = np.dot(x[:-lag], x[lag:]) / (n * var)
+    autocorr = autocorrelation(chain, n - 1)[1:]  # drop lag 0 (always 1.0)
 
     # Sum consecutive pairs (rho_1+rho_2, rho_3+rho_4, ...) and stop at the
     # first negative pair-sum.
@@ -105,6 +124,35 @@ def trace_plot(chains: list[np.ndarray], param_name: str, out_path: Path,
     plt.ylabel(param_name)
     plt.legend()
     plt.title(title if title is not None else f"Trace plot: {param_name}")
+    plt.savefig(out_path, dpi=150)
+    plt.close()
+
+
+def acf_plot(chain: np.ndarray, param_name: str, out_path: Path,
+             max_lag: int = 50) -> None:
+    """
+    Bar plot of a chain's autocorrelation function up to max_lag, with a
+    dashed +-1.96/sqrt(n) band marking approximate statistical
+    insignificance (a common rule of thumb for "has the chain decorrelated
+    by this lag").
+
+    Parameters:
+    - chain: 1-D array of draws
+    - param_name: used as the plot title and y-axis label
+    - out_path: file path to save the figure to
+    - max_lag: highest lag to plot (default 50)
+    """
+    acf = autocorrelation(chain, max_lag)
+    band = 1.96 / np.sqrt(len(chain))
+
+    plt.figure()
+    plt.bar(range(max_lag + 1), acf, width=0.6)
+    plt.axhline(band, color="gray", linestyle="--", linewidth=0.8)
+    plt.axhline(-band, color="gray", linestyle="--", linewidth=0.8)
+    plt.axhline(0, color="black", linewidth=0.8)
+    plt.xlabel("lag")
+    plt.ylabel(f"autocorrelation ({param_name})")
+    plt.title(f"Autocorrelation: {param_name}")
     plt.savefig(out_path, dpi=150)
     plt.close()
 
