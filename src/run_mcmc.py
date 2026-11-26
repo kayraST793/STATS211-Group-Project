@@ -28,6 +28,10 @@ Outputs:
         per-experiment trace plot of nu across all 4 chains
     figures/mcmc/nu_posterior_by_lambda.png
         overlaid pooled post-burn-in nu posterior density by lambda
+    figures/mcmc/prior_vs_posterior.png
+        prior vs. posterior density curves for mu, sigma, nu (baseline
+        model, lambda=0.10), showing how the observed GLD returns update
+        each parameter's initial (prior) beliefs
 """
 
 import sys
@@ -36,7 +40,7 @@ from pathlib import Path
 import numpy as np
 import pandas as pd
 import matplotlib
-from scipy.stats import gaussian_kde
+from scipy.stats import gaussian_kde, norm, halfnorm, expon
 matplotlib.use("Agg")
 import matplotlib.pyplot as plt
 
@@ -148,6 +152,7 @@ if __name__ == "__main__":
     # 4. Run baseline + sensitivity experiments, validate diagnostics --------
     summaries = {}  # label -> {param: summary_dict}
     nu_pooled_draws = {}  # label -> pooled post-burn-in nu draws
+    baseline_param_chains = None  # lambda_0.10's {param: [chain_draws, ...]}
 
     for nu_rate, label in experiments:
         results = run_experiment(nu_rate, label)
@@ -158,6 +163,8 @@ if __name__ == "__main__":
             param: _post_burnin_chains(results, param)
             for param in ("mu", "sigma", "nu")
         }
+        if label == "lambda_0.10":
+            baseline_param_chains = param_chains
 
         param_summaries = {
             param: summarize_posterior(chains)
@@ -200,3 +207,41 @@ if __name__ == "__main__":
         nu_summary = summaries[label]["nu"]
         print(f"{label:<14}{nu_summary['mean']:>10.4f}{nu_summary['sd']:>10.4f}"
               f"{nu_summary['ci_2.5']:>10.4f}{nu_summary['ci_97.5']:>10.4f}")
+
+    # 6. Prior vs. posterior comparison for mu, sigma, nu (baseline model) ----
+    # Shows how the observed GLD returns update each parameter's prior
+    # (initial) beliefs into its posterior (updated) beliefs.
+    baseline_mu = np.concatenate(baseline_param_chains["mu"])
+    baseline_sigma = np.concatenate(baseline_param_chains["sigma"])
+    baseline_nu = np.concatenate(baseline_param_chains["nu"])
+
+    # (param label, x-grid, prior pdf, baseline posterior draws, x-axis label)
+    prior_posterior_specs = [
+        ("mu", np.linspace(-0.01, 0.01, 1000),
+         norm(loc=0.0, scale=0.05).pdf, baseline_mu, "mu"),
+        ("sigma", np.linspace(0.0, 0.025, 1000),
+         halfnorm(scale=0.05).pdf, baseline_sigma, "sigma"),
+        ("nu", np.linspace(2.0, 10.0, 1000),
+         expon(loc=2.0, scale=1.0 / 0.1).pdf, baseline_nu,
+         "nu (degrees of freedom)"),
+    ]
+
+    fig, axes = plt.subplots(1, 3, figsize=(15, 4))
+    for ax, (param, grid, prior_pdf, posterior_draws, xlabel) in zip(
+            axes, prior_posterior_specs):
+        posterior_density = gaussian_kde(posterior_draws)(grid)
+        ax.plot(grid, prior_pdf(grid), linestyle="--", color="gray", label="Prior")
+        ax.plot(grid, posterior_density, color="C0", label="Posterior")
+        ax.set_xlabel(xlabel)
+        ax.set_ylabel("density")
+        ax.set_title(param)
+        ax.legend()
+        ax.ticklabel_format(axis="x", style="sci", scilimits=(-2, 2))
+
+    fig.suptitle(
+        "Prior vs. Posterior (baseline model, lambda = 0.10): how the "
+        "observed GLD returns update each parameter's beliefs"
+    )
+    fig.tight_layout()
+    fig.savefig(FIGURES_DIR / "prior_vs_posterior.png", dpi=150)
+    plt.close(fig)
