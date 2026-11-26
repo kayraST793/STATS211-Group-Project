@@ -1,105 +1,73 @@
 import numpy as np
-from scipy.special import gammaln
-from scipy.stats import norm
+from scipy.stats import norm, halfnorm, expon, t
 
 
-def log_likelihood(mu: float, sigma: float, nu: float, data: np.ndarray) -> float:
+def log_likelihood(mu: float, sigma: float, nu: float,
+                    data: np.ndarray) -> float:
     """
-    Log-likelihood of data under Student-t distribution.
-
-    Parameters:
-    - mu: location parameter
-    - sigma: scale parameter
-    - nu: degrees of freedom
-    - data: array of observations
-
-    Returns:
-    - Log-likelihood value
+    Student-t log-likelihood of data given (mu, sigma, nu).
     """
-    residuals = (data - mu) / sigma
+    if sigma <= 0 or nu <= 2:
+        return -np.inf
 
-    # Student-t log-pdf formula
-    log_pdf = (gammaln((nu + 1) / 2) - gammaln(nu / 2)
-               - 0.5 * np.log(nu * np.pi * sigma ** 2)
-               - (nu + 1) / 2 * np.log(1 + residuals ** 2 / nu))
-
-    return np.sum(log_pdf)
+    return float(np.sum(
+        t.logpdf(data, df=nu, loc=mu, scale=sigma)
+    ))
 
 
 def log_prior_mu(mu: float, mu0: float, tau0: float) -> float:
     """
-    Log-prior for mu: Normal distribution N(mu0, tau0^2).
-
-    Parameters:
-    - mu: parameter value
-    - mu0: mean of the prior
-    - tau0: standard deviation of the prior
-
-    Returns:
-    - Log-prior value
+    mu ~ Normal(mu0, tau0^2)
     """
-    return norm.logpdf(mu, loc=mu0, scale=tau0)
+    return float(norm.logpdf(mu, loc=mu0, scale=tau0))
 
 
 def log_prior_sigma(sigma: float, s0: float) -> float:
     """
-    Log-prior for sigma: Half-Normal distribution with scale s0.
-
-    Parameters:
-    - sigma: scale parameter
-    - s0: scale of the half-normal
-
-    Returns:
-    - Log-prior value or -inf if sigma <= 0
+    sigma ~ HalfNormal(s0)
     """
     if sigma <= 0:
         return -np.inf
 
-    # Half-normal log-pdf: 0.5*log(2) - 0.5*log(pi*s0^2) - (sigma^2)/(2*s0^2)
-    return 0.5 * np.log(2) - 0.5 * np.log(np.pi * s0 ** 2) - (sigma ** 2) / (2 * s0 ** 2)
+    return float(halfnorm.logpdf(sigma, loc=0, scale=s0))
 
 
 def log_prior_nu(nu: float, shift: float, rate: float) -> float:
     """
-    Log-prior for nu: Shifted exponential distribution.
-
-    Parameters:
-    - nu: degrees of freedom
-    - shift: shift parameter (minimum value of nu)
-    - rate: rate parameter of the exponential
-
-    Returns:
-    - Log-prior value or -inf if nu <= shift
+    nu = shift + Exponential(rate)
     """
     if nu <= shift:
         return -np.inf
 
-    # Shifted exponential log-pdf: log(rate) - rate*(nu - shift)
-    return np.log(rate) - rate * (nu - shift)
+    return float(expon.logpdf(
+        nu,
+        loc=shift,
+        scale=1 / rate
+    ))
 
 
-def log_posterior(mu: float, sigma: float, nu: float, data: np.ndarray,
-                  hyperparams: dict) -> float:
+def log_posterior(mu: float, sigma: float, nu: float,
+                   data: np.ndarray, hyperparams: dict) -> float:
     """
-    Log-posterior: log-likelihood + log-priors.
-
-    Parameters:
-    - mu, sigma, nu: parameters
-    - data: observations
-    - hyperparams: dict with keys 'mu0', 'tau0', 's0', 'nu_shift', 'nu_rate'
-
-    Returns:
-    - Log-posterior value or -inf if parameters are out of support
+    Log-posterior = log-likelihood + log-priors.
     """
-    # Check if parameters are in support (priors return -inf out of support)
-    log_prior_sigma_val = log_prior_sigma(sigma, hyperparams['s0'])
-    log_prior_nu_val = log_prior_nu(nu, hyperparams['nu_shift'], hyperparams['nu_rate'])
+    lp_mu = log_prior_mu(
+        mu, hyperparams["mu0"], hyperparams["tau0"]
+    )
 
-    if log_prior_sigma_val == -np.inf or log_prior_nu_val == -np.inf:
+    lp_sigma = log_prior_sigma(
+        sigma, hyperparams["s0"]
+    )
+
+    lp_nu = log_prior_nu(
+        nu,
+        hyperparams["nu_shift"],
+        hyperparams["nu_rate"]
+    )
+
+    if not np.all(np.isfinite([lp_mu, lp_sigma, lp_nu])):
         return -np.inf
 
-    # Sum all log terms
-    return (log_likelihood(mu, sigma, nu, data)
-            + log_prior_mu(mu, hyperparams['mu0'], hyperparams['tau0'])
-            + log_prior_sigma_val
-            + log_prior_nu_val)
+    ll = log_likelihood(mu, sigma, nu, data)
+
+    return float(ll + lp_mu + lp_sigma + lp_nu)
