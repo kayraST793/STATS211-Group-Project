@@ -109,7 +109,7 @@ def run_experiment(nu_rate: float, label: str) -> list[dict]:
     - list of run_chain-shaped result dicts, one per chain (see
       src/mcmc.run_multiple_chains)
     """
-    hyperparams = dict(mu0=0.0, tau0=0.05, s0=0.05, nu_shift=2.0, nu_rate=nu_rate)
+    hyperparams = dict(mu0=0.0, tau0=10, s0=10, nu_shift=2.0, nu_rate=nu_rate)
 
     results = run_multiple_chains(
         data,
@@ -222,48 +222,71 @@ if __name__ == "__main__":
     baseline_sigma = np.concatenate(baseline_param_chains["sigma"])
     baseline_nu = np.concatenate(baseline_param_chains["nu"])
 
-    # Each prior's full natural range, wide enough to show its true shape
-    # (bell/half-normal peak/exponential decay). The posterior is far more
-    # concentrated than the prior (that is the point of this plot), so prior
-    # and posterior are put on separate y-axes (twinx) -- sharing one y-axis
-    # would always flatten the lower-peaked curve to a near-invisible line.
+    # The prior is now extremely diffuse (tau0=s0=10) relative to the
+    # posterior (which stays concentrated at the data's ~0.01 scale) -- a
+    # ~1000x mismatch in both location and width. twinx() alone only fixes a
+    # y-scale mismatch (it still shares the x-axis), so a single shared
+    # x-window can't show both curves meaningfully. Instead: top row shows
+    # each prior's true shape over its own full range (with a dashed red
+    # line marking the posterior mean -- the posterior itself is too narrow
+    # to render as a curve there); bottom row zooms into the posterior's own
+    # range, where prior and posterior share an x-window and only need
+    # separate y-axes (twinx).
     # (param label, x-grid over the prior's full range, prior pdf,
     #  baseline posterior draws, x-axis label)
     prior_posterior_specs = [
-        ("mu", np.linspace(-0.2, 0.2, 1000),
-         norm(loc=0.0, scale=0.05).pdf, baseline_mu, "mu"),
-        ("sigma", np.linspace(0.0, 0.2, 1000),
-         halfnorm(scale=0.05).pdf, baseline_sigma, "sigma"),
+        ("mu", np.linspace(-30.0, 30.0, 1000),
+         norm(loc=0.0, scale=10).pdf, baseline_mu, "mu"),
+        ("sigma", np.linspace(0.0, 30.0, 1000),
+         halfnorm(scale=10).pdf, baseline_sigma, "sigma"),
         ("nu", np.linspace(2.0, 50.0, 1000),
          expon(loc=2.0, scale=1.0 / 0.1).pdf, baseline_nu,
          "nu (degrees of freedom)"),
     ]
 
-    fig, axes = plt.subplots(1, 3, figsize=(15, 4.5))
-    for ax_prior, (param, grid, prior_pdf, posterior_draws, xlabel) in zip(
-            axes, prior_posterior_specs):
-        posterior_density = gaussian_kde(posterior_draws)(grid)
+    fig, axes = plt.subplots(2, 3, figsize=(15, 8))
+    for col, (param, prior_grid, prior_pdf, posterior_draws, xlabel) in \
+            enumerate(prior_posterior_specs):
+        post_pad = 0.25 * (posterior_draws.max() - posterior_draws.min())
+        posterior_grid = np.linspace(
+            posterior_draws.min() - post_pad, posterior_draws.max() + post_pad, 1000
+        )
+        posterior_density = gaussian_kde(posterior_draws)(posterior_grid)
+        posterior_mean = posterior_draws.mean()
 
-        ax_prior.plot(grid, prior_pdf(grid), linestyle="--", color="gray", label="Prior")
-        ax_prior.set_xlabel(xlabel)
-        ax_prior.set_ylabel("prior density", color="gray")
-        ax_prior.tick_params(axis="y", labelcolor="gray")
-        ax_prior.set_title(param)
-        ax_prior.ticklabel_format(axis="x", style="sci", scilimits=(-2, 2))
+        ax_full = axes[0, col]
+        ax_full.plot(prior_grid, prior_pdf(prior_grid), linestyle="--",
+                     color="gray", label="Prior")
+        ax_full.axvline(posterior_mean, color="C3", linestyle=":",
+                        label="Posterior mean")
+        ax_full.set_title(f"{param} — prior's full range")
+        ax_full.set_xlabel(xlabel)
+        ax_full.set_ylabel("prior density")
+        ax_full.legend()
 
-        ax_post = ax_prior.twinx()
-        ax_post.plot(grid, posterior_density, color="C0", label="Posterior")
-        ax_post.set_ylabel("posterior density", color="C0")
-        ax_post.tick_params(axis="y", labelcolor="C0")
+        ax_zoom = axes[1, col]
+        ax_zoom.plot(posterior_grid, prior_pdf(posterior_grid), linestyle="--",
+                     color="gray", label="Prior")
+        ax_zoom.set_xlabel(xlabel)
+        ax_zoom.set_ylabel("prior density", color="gray")
+        ax_zoom.tick_params(axis="y", labelcolor="gray")
+        ax_zoom.set_title(f"{param} — zoomed to posterior")
+        ax_zoom.ticklabel_format(axis="x", style="sci", scilimits=(-2, 2))
+        ax_zoom.ticklabel_format(axis="y", useOffset=False)
 
-        lines = ax_prior.get_lines() + ax_post.get_lines()
-        ax_prior.legend(lines, [line.get_label() for line in lines])
+        ax_zoom_post = ax_zoom.twinx()
+        ax_zoom_post.plot(posterior_grid, posterior_density, color="C0", label="Posterior")
+        ax_zoom_post.set_ylabel("posterior density", color="C0")
+        ax_zoom_post.tick_params(axis="y", labelcolor="C0")
+
+        lines = ax_zoom.get_lines() + ax_zoom_post.get_lines()
+        ax_zoom.legend(lines, [line.get_label() for line in lines])
 
     fig.suptitle(
         "Prior vs. Posterior (baseline model, lambda = 0.10): how the "
         "observed GLD returns update each parameter's beliefs\n"
-        "(each parameter's prior shown over its full range; "
-        "prior and posterior use separate density scales)"
+        "(top: prior's true shape over its full range; "
+        "bottom: zoomed to the posterior, separate density scales)"
     )
     fig.tight_layout()
     fig.savefig(FIGURES_DIR / "prior_vs_posterior.png", dpi=150)
