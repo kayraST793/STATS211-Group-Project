@@ -30,6 +30,8 @@ Outputs:
         autocorrelation function of each parameter (baseline model), used
         to judge whether thinning is necessary (it is judged against ESS,
         printed alongside -- see Section 6 below)
+    figures/mcmc/acf_comparison_lambda_0.10.png
+        mu/sigma/nu autocorrelation decay curves overlaid on one plot
     figures/mcmc/prior_vs_posterior.png
         prior vs. posterior density curves for mu, sigma, nu (baseline
         model, lambda=0.10), showing how the observed GLD returns update
@@ -58,7 +60,8 @@ if str(PROJECT_DIR) not in sys.path:
     sys.path.insert(0, str(PROJECT_DIR))
 
 from src.mcmc import run_multiple_chains  # noqa: E402
-from src.diagnostics import summarize_posterior, trace_plot, acf_plot  # noqa: E402
+from src.diagnostics import (summarize_posterior, trace_plot, acf_plot,  # noqa: E402
+                             autocorrelation)
 
 # RUN_MCMC_FAST=1 runs a quick debug pass (fewer iterations, baseline
 # experiment only -- see below). Debug output goes to separate *_debug
@@ -244,6 +247,24 @@ if __name__ == "__main__":
         )
         print(f"  {param}: ESS={ess:.0f} / {n_draws} draws "
               f"({ess_ratio:.1%}) -> {verdict}")
+
+    # Compare all three parameters' autocorrelation decay on one plot.
+    acf_max_lag = 50
+    plt.figure()
+    for param in ("mu", "sigma", "nu"):
+        chain = baseline_param_chains[param][0]
+        acf = autocorrelation(chain, acf_max_lag)
+        plt.plot(range(acf_max_lag + 1), acf, label=param)
+    band = 1.96 / np.sqrt(len(baseline_param_chains["mu"][0]))
+    plt.axhline(band, color="gray", linestyle="--", linewidth=0.8)
+    plt.axhline(-band, color="gray", linestyle="--", linewidth=0.8)
+    plt.axhline(0, color="black", linewidth=0.8)
+    plt.xlabel("lag")
+    plt.ylabel("autocorrelation")
+    plt.title("Autocorrelation decay by parameter (baseline, lambda = 0.10)")
+    plt.legend()
+    plt.savefig(FIGURES_DIR / "acf_comparison_lambda_0.10.png", dpi=150)
+    plt.close()
 
     # 7. Prior vs. posterior comparison for mu, sigma, nu (baseline model) ----
     # Shows how the observed GLD returns update each parameter's prior
