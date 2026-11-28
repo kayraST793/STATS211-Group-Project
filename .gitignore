@@ -14,3 +14,4 @@ figures/mcmc_debug/
 # Kept locally, not part of the group handoff
 tests/
 docs/superpowers/
+.superpowers/
