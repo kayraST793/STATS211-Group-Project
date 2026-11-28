@@ -4,5 +4,13 @@
 venv/
 __pycache__/
 *.pyc
+.pytest_cache/
+.DS_Store
+
+# Fast-debug output (RUN_MCMC_FAST=1); never part of the real analysis
 results/mcmc_debug/
 figures/mcmc_debug/
+
+# Kept locally, not part of the group handoff
+tests/
+docs/superpowers/
