@@ -14,17 +14,19 @@ $$\log L(\mu, \sigma, \nu) = n \left[ \log \Gamma\left(\frac{\nu+1}{2}\right) - 
 
 ## 2. Prior Specifications
 
-We specify weakly-informative priors using the EDA summary statistics as anchors. The sample mean is approximately 0.0009, the sample standard deviation is approximately 0.0139. We deliberately choose prior scales that are roughly 4 times wider than the observed data variability to avoid over-regularization.
+We specify weakly-informative priors using the EDA summary statistics as anchors. The sample mean is approximately 0.0009, the sample standard deviation is approximately 0.0139. The prior scales are deliberately set orders of magnitude wider than the observed data variability, so that the posterior is driven essentially entirely by the likelihood.
 
 **Prior for μ (location):**
-$$\mu \sim \text{Normal}(\mu_0 = 0, \tau_0 = 0.05)$$
+$$\mu \sim \text{Normal}(\mu_0 = 0, \tau_0 = 10)$$
 
-The mean is centered at zero (the theoretical expected return under risk neutrality) and the standard deviation 0.05 is about 3.6 times the sample standard deviation, allowing flexibility for the posterior to be driven primarily by the likelihood.
+The mean is centered at zero (the theoretical expected return under risk neutrality). The standard deviation of 10 is roughly 700 times the sample standard deviation — on the scale of daily log returns this is effectively flat, encoding no meaningful prior information about the drift.
 
 **Prior for σ (scale):**
-$$\sigma \sim \text{HalfNormal}(s_0 = 0.05), \quad \text{i.e.,} \quad p(\sigma) \propto \exp\left(-\frac{\sigma^2}{2s_0^2}\right) \text{ for } \sigma > 0$$
+$$\sigma \sim \text{HalfNormal}(s_0 = 10), \quad \text{i.e.,} \quad p(\sigma) \propto \exp\left(-\frac{\sigma^2}{2s_0^2}\right) \text{ for } \sigma > 0$$
 
-The half-normal prior on the positive real line reflects that scale is inherently non-negative. The hyperparameter `s_0 = 0.05` is again roughly 3.6 times the sample standard deviation, expressing weak information while remaining concentrated enough to avoid exploring pathological scale values.
+The half-normal prior on the positive real line reflects that scale is inherently non-negative. The hyperparameter `s_0 = 10` is likewise vastly wider than the data scale, so the prior contributes essentially no information beyond the positivity constraint.
+
+Figure `figures/mcmc/prior_vs_posterior.png` shows this directly: over the entire range the posterior occupies, each prior density is visually flat, and the posterior is sharply concentrated by comparison. This is the intended behaviour of a vague prior dominated by the likelihood.
 
 **Prior for ν (degrees of freedom):**
 $$\nu \sim \text{ShiftedExponential}(\text{shift}=2, \text{rate}=0.1), \quad \text{i.e.,} \quad \nu = 2 + \text{Exponential}(0.1)$$
@@ -78,82 +80,122 @@ The random-walk step sizes are adapted during the burn-in period to achieve an e
   - If acceptance rate > 0.44: multiply $\text{step} \gets \text{step} \cdot \exp(+0.1)$
   - If acceptance rate ≤ 0.44: multiply $\text{step} \gets \text{step} \cdot \exp(-0.1)$
   - Reset the window counter
-- Once burn-in ends (after 5000 sweeps), freeze all step sizes at their current values
+- Once burn-in ends (after 20,000 sweeps), freeze all step sizes at their current values
 
 This adaptive scheme is a form of optimal scaling that ensures efficient mixing without relying on preliminary runs or manual tuning.
 
-## 6. Multi-Chain Setup and Output
+## 6. Chain Setup, Burn-in, Thinning, and Output
 
-To enable convergence diagnostics (Person 3), we run **4 independent chains** with overdispersed starting points and independent random-number seeds.
+We run a **single long chain** per experiment, started from the data's own summary statistics.
 
-**Overdispersed initialization:**
+**Initialization:**
 
-The sample mean and sample standard deviation of the data provide starting anchors:
+| Parameter | Starting value |
+|-----------|----------------|
+| μ₀ | sample_mean (≈ 0.0009) |
+| σ₀ | sample_std (≈ 0.0139) |
+| ν₀ | 8.0 |
 
-| Chain | μ₀ offset | σ₀ multiplier | ν₀ |
-|-------|-----------|---------------|----|
-| 1 | sample_mean − 1.0 × sample_std | 0.5 × sample_std | 4.0 |
-| 2 | sample_mean − 0.5 × sample_std | 1.0 × sample_std | 8.0 |
-| 3 | sample_mean + 0.5 × sample_std | 1.5 × sample_std | 15.0 |
-| 4 | sample_mean + 1.0 × sample_std | 2.0 × sample_std | 30.0 |
-
-Each chain is seeded independently (seeds 1, 2, 3, 4) and uses `np.random.default_rng()` from NumPy, ensuring reproducibility and independence.
+The chain is seeded with `np.random.default_rng(1)`, making every result in this document exactly reproducible.
 
 **Run parameters:**
-- Total iterations per chain: 20000
-- Burn-in period: 5000 iterations (discarded; $n_{\text{post-burnin}} = 15000$ per chain)
+- Total sweeps: 200,000
+- Burn-in: 20,000 sweeps (discarded)
+- Thinning: keep every 20th post-burn-in draw
+- **Retained posterior sample: (200,000 − 20,000) / 20 = 9,000 draws**
 - Initial step sizes: $\text{step}_\mu = 0.005$, $\text{step}_\sigma = 0.3$, $\text{step}_\nu = 0.3$ (log scale)
 - Adaptation window: every 50 sweeps during burn-in; frozen thereafter
 
+**Burn-in.** Figure `figures/mcmc/burnin_trace_lambda_0.10.png` plots the opening iterations of the raw chain for all three parameters. The chain settles far faster than the burn-in length: `ν` falls from its start near 8 to its posterior region (≈ 4) within roughly 40 sweeps, and `σ` descends from the sample standard deviation (0.0139) to ≈ 0.0099 by roughly iteration 120. Discarding 20,000 sweeps is therefore a very conservative choice.
+
+**Thinning.** Successive sweeps of a random-walk Metropolis sampler are autocorrelated, so the retained sample keeps only every 20th draw (see Section 7 for the autocorrelation evidence behind this interval). Thinning does not by itself increase the information in a chain — it reduces storage — which is why the total sweep count was raised to 200,000 to compensate.
+
 **Run result on GLD data (753 daily log returns):**
 
-After running all four chains on the actual GLD data, empirical acceptance rates ranged from 0.385 to 0.516 across the three parameter blocks and four chains—close to the 0.44 target, indicating well-tuned proposals. Post-burn-in posterior means converged to approximately:
+Empirical acceptance rates ranged from 0.417 to 0.510 across the three parameter blocks and the three experiments — close to the 0.44 target, indicating well-tuned proposals. Posterior means for the baseline model:
 - $\hat{\mu} \approx 0.00157$
-- $\hat{\sigma} \approx 0.0099$
-- $\hat{\nu} \approx 4.0$
+- $\hat{\sigma} \approx 0.00989$
+- $\hat{\nu} \approx 4.02$
 
 The posterior mean for `ν` near 4 reflects the heavy-tailed nature of the data, confirming the motivation for the Student-t model.
 
+Two consistency checks worth noting. First, the model-implied standard deviation, $\sigma\sqrt{\nu/(\nu-2)} = 0.01394$, matches the sample standard deviation of 0.01389 to within 0.4% — even though nothing in the fitting procedure targets that quantity directly. Second, the posterior mean for `μ` (0.00157) is *higher* than the arithmetic sample mean (0.00090): the Student-t likelihood downweights the extreme −10.8% outlier that drags the sample mean down. This is robust estimation behaving as intended, and is itself an argument for the Student-t over the normal.
+
 **Output files:**
 
-As described in Section 7 below, `src/run_mcmc.py` actually runs this 4-chain experiment three times, once per value of the `ν` prior's rate hyperparameter `λ` (`nu_rate`). Each chain writes its draws to a separate CSV file, organized into one subdirectory per `λ`:
+As described in Section 7 below, `src/run_mcmc.py` runs this single-chain experiment three times, once per value of the `ν` prior's rate hyperparameter `λ` (`nu_rate`), writing to one subdirectory per `λ`:
 
-- `results/mcmc/lambda_0.10/chain_1.csv` .. `chain_4.csv` — **baseline model** (`nu_rate = 0.1`, the value used everywhere else in this doc and the code's default hyperparameter)
-- `results/mcmc/lambda_0.05/chain_1.csv` .. `chain_4.csv` — sensitivity-analysis alternative (lower rate, heavier-tailed `ν` prior)
-- `results/mcmc/lambda_0.20/chain_1.csv` .. `chain_4.csv` — sensitivity-analysis alternative (higher rate, lighter-tailed `ν` prior)
+- `results/mcmc/lambda_0.10/chain_1.csv` — **baseline model** (`nu_rate = 0.1`, the value used everywhere else in this doc and the code's default hyperparameter)
+- `results/mcmc/lambda_0.05/chain_1.csv` — sensitivity-analysis alternative (lower rate, heavier-tailed `ν` prior)
+- `results/mcmc/lambda_0.20/chain_1.csv` — sensitivity-analysis alternative (higher rate, lighter-tailed `ν` prior)
 
 A reader who just wants "the model" (not the sensitivity sweep) should use `results/mcmc/lambda_0.10/`.
 
-Each file has columns `mu, sigma, nu, is_burnin` (20000 rows per chain). The `is_burnin` boolean flag allows downstream consumers (Person 3 and 4) to easily exclude the first 5000 burn-in draws and focus on the post-burn-in posteriors.
+**CSV format — important for Person 3 and Person 4.** Each file has exactly three columns, `mu, sigma, nu`, and 9,000 rows. **Burn-in has already been discarded and the remainder already thinned, so every row is a usable posterior draw — there is no `is_burnin` column to filter on.** Simply read the file and use all of it:
+
+```python
+draws = pd.read_csv("results/mcmc/lambda_0.10/chain_1.csv")  # 9,000 ready-to-use draws
+```
 
 ## 7. Convergence Diagnostics and Prior-Sensitivity Analysis
 
-**Diagnostics module.** `src/diagnostics.py` implements the convergence diagnostics used to validate each of the three experiments above before comparing them:
+**Diagnostics module.** `src/diagnostics.py` implements the diagnostics used to validate each of the three experiments above before comparing them:
 
-- **`r_hat`** — the classic Gelman-Rubin potential scale reduction factor, computed across the 4 chains for a given parameter. Values near 1.0 indicate the chains have converged to the same distribution; the conventional threshold for concern is `r_hat > 1.1`.
-- **`effective_sample_size`** — effective sample size for a single chain, computed via Geyer's initial monotone sequence method (summing consecutive pairs of lag-`t` autocorrelations and stopping at the first pair whose sum goes negative). This corrects the nominal draw count for autocorrelation in the chain.
-- **`trace_plot`** — overlays the per-chain traces for a parameter and saves the figure, for visual inspection of mixing.
-- **`summarize_posterior`** — pools the post-burn-in draws across all 4 chains to report mean/sd/95% CI, alongside `r_hat` and `ess` for that parameter. **Note:** the `ess` value it reports is the *average* of `effective_sample_size` across the 4 individual chains, not a sum across chains — a per-chain figure, not a total pooled ESS.
+- **`autocorrelation`** — the sample autocorrelation function (ACF) of a chain at lags 0..`max_lag`, used to assess mixing speed and to justify the thinning interval.
+- **`effective_sample_size`** — effective sample size, computed via Geyer's initial monotone sequence method (summing consecutive pairs of lag-`t` autocorrelations and stopping at the first pair whose sum goes negative). This corrects the nominal draw count for residual autocorrelation.
+- **`trace_plot`** — plots a parameter's trace and saves the figure, for visual inspection of mixing.
+- **`acf_plot`** — bar plot of a parameter's ACF with a ±1.96/√n significance band.
+- **`burnin_trace_plot`** — stacked traces of the opening iterations with the burn-in period shaded (the figure referenced in Section 6).
+- **`summarize_posterior`** — reports mean/sd/95% CI and `ess` for a parameter.
 
-**Diagnostic results (all three λ values).** Across all three experiments (`λ = 0.05, 0.10, 0.20`), `r_hat` for `μ`, `σ`, and `ν` ranged from approximately 0.9998 to 1.0003 — well under the 1.1 threshold, indicating excellent convergence of all 4 chains in every experiment. Per-chain effective sample size (as computed/averaged by `summarize_posterior`, i.e. per chain, not summed across the 4 chains) ranged roughly from 1200 to 3200 draws per chain, out of 15000 post-burn-in draws per chain — consistent with the moderate autocorrelation expected from a random-walk Metropolis sampler.
+**Note on R-hat.** The Gelman-Rubin statistic is deliberately *not* reported. R-hat compares between-chain variance to within-chain variance, so it is undefined for the single-chain design used here. Convergence is instead assessed from the burn-in trace (Section 6), the trace plots, the ACF, and the effective sample size.
 
-**Motivation for the sensitivity analysis.** The prior for `ν` (Section 2) has a rate hyperparameter `λ` that was set to `0.1` somewhat arbitrarily. Because the central scientific conclusion of this model is that GLD returns are heavy-tailed (small `ν`), it's important to check that this conclusion is a feature of the data and likelihood, not an artifact of how we happened to set `λ`. `src/run_mcmc.py` therefore reruns the full 4-chain experiment at `λ = 0.05` and `λ = 0.20` — a 4x range around the baseline — and compares the resulting posteriors for `ν`.
+**Autocorrelation and the thinning interval.** On the raw (unthinned) post-burn-in chain of 180,000 draws, the ACF decays as expected for a random-walk Metropolis sampler, with `μ` mixing fastest and `σ` and `ν` decaying together more slowly:
 
-**Sensitivity result.** Pooled post-burn-in posterior summary for `ν`, by `λ`:
+| Parameter | ACF at lag 20 | First lag inside the 95% band (±0.005) |
+|---|---|---|
+| μ | ≈ 0.00 | 15 |
+| σ | ≈ 0.04 | 29 |
+| ν | ≈ 0.05 | 35 |
+
+The thinning interval of 20 does not fully clear the (very tight) significance band for `σ` and `ν`, but the residual correlation at that lag is small enough that the retained draws are nearly independent in practice. The direct evidence is the effective sample size of the retained sample:
+
+| Parameter | ESS | Retained draws | Effectively independent |
+|---|---|---|---|
+| μ | 9000 | 9000 | 100.0% |
+| σ | 8186 | 9000 | 91.0% |
+| ν | 7939 | 9000 | 88.2% |
+
+Raising the thinning interval to ≈35 would fully clear the band, at the cost of roughly 40% of the retained draws. See `figures/mcmc/acf_comparison_lambda_0.10.png` for the three decay curves with the thinning interval marked.
+
+**Motivation for the sensitivity analysis.** The prior for `ν` (Section 2) has a rate hyperparameter `λ` that was set to `0.1` somewhat arbitrarily. Because the central scientific conclusion of this model is that GLD returns are heavy-tailed (small `ν`), it's important to check that this conclusion is a feature of the data and likelihood, not an artifact of how we happened to set `λ`. `src/run_mcmc.py` therefore reruns the full experiment at `λ = 0.05` and `λ = 0.20` — a 4x range around the baseline — and compares the resulting posteriors for `ν`.
+
+**Sensitivity result.** Posterior summary for `ν`, by `λ` (9,000 retained draws each):
 
 | λ (nu_rate) | mean(ν) | sd(ν) | 95% CI(ν) |
 |---|---|---|---|
-| 0.05 | ≈4.036 | ≈0.654 | ≈[2.99, 5.52] |
-| 0.10 (baseline) | ≈4.026 | ≈0.652 | ≈[2.98, 5.51] |
-| 0.20 | ≈3.965 | ≈0.629 | ≈[2.96, 5.42] |
+| 0.05 | ≈4.032 | ≈0.657 | ≈[2.97, 5.51] |
+| 0.10 (baseline) | ≈4.025 | ≈0.651 | ≈[2.98, 5.50] |
+| 0.20 | ≈3.976 | ≈0.635 | ≈[2.95, 5.42] |
 
 **Conclusion:** the posterior for `ν` is essentially insensitive to this prior choice across a 4x range of `λ` — all three 95% CIs overlap almost completely. The heavy-tails conclusion (`ν ≈ 4`, well below a near-normal `ν ≥ 30`) is therefore robust to this prior specification, not an artifact of the particular rate chosen.
 
-**Caveat for Person 4 (VaR/ES):** the posterior 95% CI for `ν` ([2.98, 5.51] at baseline) sits close to the prior's hard support boundary at `ν = 2` (required for finite variance) — the committed MCMC draws reach as low as `ν ≈ 2.31`. This is a genuinely heavy-tailed, finite-but-high-kurtosis regime, not a near-normal one. Person 4 should expect tail risk (VaR/ES) under this model to exceed, likely substantially, what a normal-distribution assumption would predict.
+**Caveat for Person 4 (VaR/ES):** the posterior 95% CI for `ν` ([2.98, 5.50] at baseline) sits close to the prior's hard support boundary at `ν = 2` (required for finite variance) — the committed MCMC draws reach as low as `ν ≈ 2.43`. This is a genuinely heavy-tailed, finite-but-high-kurtosis regime, not a near-normal one. Person 4 should expect tail risk (VaR/ES) under this model to exceed, likely substantially, what a normal-distribution assumption would predict.
 
 ---
 
 **References:**
 
 - **Person 1 (EDA):** Summary statistics and Q-Q plot analysis in `src/eda.py`
-- **Model implementation:** Likelihood and priors in `src/model.py`; sampler in `src/mcmc.py`; driver (3-experiment λ sweep) in `src/run_mcmc.py`; convergence diagnostics and posterior summaries (R-hat, effective sample size, trace plots) in `src/diagnostics.py`
+- **Model implementation:** Likelihood and priors in `src/model.py`; sampler in `src/mcmc.py`; driver (3-experiment λ sweep) in `src/run_mcmc.py`; diagnostics and posterior summaries (autocorrelation, effective sample size, trace/ACF/burn-in plots) in `src/diagnostics.py`
+
+**Figures** (all in `figures/mcmc/`):
+
+| File | Shows |
+|---|---|
+| `burnin_trace_lambda_0.10.png` | μ/σ/ν traces over the opening iterations, burn-in shaded |
+| `trace_nu_lambda_{0.10,0.05,0.20}.png` | ν trace for each λ experiment |
+| `acf_{mu,sigma,nu}_lambda_0.10.png` | per-parameter ACF on the raw chain |
+| `acf_comparison_lambda_0.10.png` | all three ACF decay curves, thinning interval marked |
+| `nu_posterior_by_lambda.png` | ν posterior densities across the three λ values |
+| `prior_vs_posterior.png` | prior vs. posterior for each parameter |
