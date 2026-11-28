@@ -251,7 +251,7 @@ if __name__ == "__main__":
     # whole N_BURNIN window would render as a flat band and hide the very
     # transient this figure exists to show. Built from the in-memory chain
     # -- the CSVs hold only the retained (post-burn-in, thinned) sample.
-    BURNIN_SHOW = 500
+    BURNIN_SHOW = 1000
     burnin_labels = {
         "mu": r"$\mu$ (location)",
         "sigma": r"$\sigma$ (scale)",
