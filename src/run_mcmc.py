@@ -96,10 +96,16 @@ INITS = [dict(mu=sample_mean, sigma=sample_std, nu=8.0)]
 SEEDS = [1]
 N_ITER = 200000
 N_BURNIN = 20000
-# Keep every THIN-th post-burn-in draw. The ACF decays to within the
-# significance band by roughly lag 20 (see figures/mcmc/acf_*), so thinning
-# at that lag yields a near-independent sample. N_ITER is scaled up 10x to
+# Keep every THIN-th post-burn-in draw; N_ITER is scaled up 10x to
 # compensate, leaving (200000 - 20000) / 20 = 9000 retained draws.
+#
+# At lag 20 the raw-chain ACF is ~0.00 (mu), ~0.04 (sigma), ~0.05 (nu).
+# That is not yet inside the 95% band (+-1.96/sqrt(180000) = +-0.005,
+# reached only at lags 15 / 29 / 35), but the residual correlation is
+# small enough that the retained draws come out 88-100% effectively
+# independent -- see the ESS/retained ratios printed by Section 7, which
+# are the direct evidence for this choice. Raising THIN to ~35 would
+# fully clear the band at the cost of ~40% of the retained draws.
 THIN = 20
 INIT_STEPS = dict(mu=0.005, sigma=0.3, nu=0.3)
 
