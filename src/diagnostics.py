@@ -128,15 +128,17 @@ def acf_plot(chain: np.ndarray, param_name: str, out_path: Path,
 
 
 def burnin_trace_plot(draws: dict[str, np.ndarray], n_burnin: int,
-                      out_path: Path, title: str | None = None) -> None:
+                      out_path: Path, title: str | None = None,
+                      n_show: int | None = None,
+                      settled_values: dict[str, float] | None = None) -> None:
     """
-    Stacked full-chain trace plots marking the burn-in period.
+    Stacked trace plots of the start of the chain, marking burn-in.
 
     One vertically stacked subplot per entry in `draws`, all sharing the
-    iteration axis. Iterations 1..n_burnin are shaded and drawn in a
-    separate colour from the retained posterior-sampling region, with a
-    dashed line at the boundary. Samples are plotted exactly as drawn --
-    no smoothing, subsampling, or transformation.
+    iteration axis. Burn-in iterations are shaded and drawn in a separate
+    colour from the retained posterior-sampling region, with a dashed line
+    at the boundary. Samples are plotted exactly as drawn -- no smoothing,
+    subsampling, or transformation.
 
     Parameters:
     - draws: {display label: 1-D array of ALL iterations (burn-in first)},
@@ -144,24 +146,44 @@ def burnin_trace_plot(draws: dict[str, np.ndarray], n_burnin: int,
     - n_burnin: number of leading iterations treated as burn-in
     - out_path: file path to save the figure to
     - title: optional figure title
+    - n_show: display only the first n_show iterations. Use this to zoom
+      into the transient when n_burnin is far longer than the chain takes
+      to settle, which would otherwise render as a flat band. Defaults to
+      the whole chain.
+    - settled_values: {display label: value} drawn as a horizontal
+      reference line, so convergence toward it is visible
     """
     burnin_color = "#c44e52"
     posterior_color = "#2d6da4"
 
+    n_total = len(next(iter(draws.values())))
+    n_show = min(n_show or n_total, n_total)
+    # How much of the visible window is burn-in (all of it, when zoomed in
+    # further than the burn-in boundary).
+    n_burnin_visible = min(n_burnin, n_show)
+
     fig, axes = plt.subplots(len(draws), 1, figsize=(12, 9), sharex=True)
 
     for ax, (label, chain) in zip(np.atleast_1d(axes), draws.items()):
-        iterations = np.arange(1, len(chain) + 1)
+        chain = chain[:n_show]
+        iterations = np.arange(1, n_show + 1)
 
-        ax.axvspan(1, n_burnin, color=burnin_color, alpha=0.12, zorder=0,
-                   label=f"Burn-in (1–{n_burnin:,})")
-        ax.plot(iterations[:n_burnin], chain[:n_burnin], color=burnin_color,
-                linewidth=0.3, zorder=1)
-        ax.plot(iterations[n_burnin:], chain[n_burnin:], color=posterior_color,
-                linewidth=0.3, zorder=1,
-                label=f"Posterior sampling ({n_burnin + 1:,}–{len(chain):,})")
-        ax.axvline(n_burnin, color="black", linestyle="--", linewidth=1.2,
-                   zorder=2, label=f"End of burn-in (iteration {n_burnin:,})")
+        ax.axvspan(1, n_burnin_visible, color=burnin_color, alpha=0.12,
+                   zorder=0, label=f"Burn-in (1–{n_burnin:,})")
+        ax.plot(iterations[:n_burnin_visible], chain[:n_burnin_visible],
+                color=burnin_color, linewidth=0.9, zorder=1)
+
+        if n_show > n_burnin:
+            ax.plot(iterations[n_burnin:], chain[n_burnin:],
+                    color=posterior_color, linewidth=0.9, zorder=1,
+                    label=f"Posterior sampling ({n_burnin + 1:,}–{n_total:,})")
+            ax.axvline(n_burnin, color="black", linestyle="--", linewidth=1.2,
+                       zorder=3,
+                       label=f"End of burn-in (iteration {n_burnin:,})")
+
+        if settled_values is not None and label in settled_values:
+            ax.axhline(settled_values[label], color="black", linestyle=":",
+                       linewidth=1.3, zorder=2, label="Posterior mean")
 
         ax.set_ylabel(label)
         ax.margins(x=0)
@@ -172,7 +194,7 @@ def burnin_trace_plot(draws: dict[str, np.ndarray], n_burnin: int,
 
     # One legend for the whole figure: every subplot shares these regions.
     handles, labels = axes[0].get_legend_handles_labels()
-    legend = fig.legend(handles, labels, loc="upper center", ncol=3,
+    legend = fig.legend(handles, labels, loc="upper center", ncol=len(labels),
                         frameon=True, bbox_to_anchor=(0.5, 0.955))
     for line in legend.get_lines():
         line.set_linewidth(2.0)  # thin trace lines are illegible in a legend

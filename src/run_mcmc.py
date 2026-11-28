@@ -25,9 +25,9 @@ Outputs:
     figures/mcmc/nu_posterior_by_lambda.png
         overlaid pooled post-burn-in nu posterior density by lambda
     figures/mcmc/burnin_trace_lambda_0.10.png
-        stacked mu/sigma/nu traces over ALL iterations (baseline model),
-        shading the burn-in period; cannot be rebuilt from the CSVs,
-        which hold only the retained post-burn-in thinned sample
+        stacked mu/sigma/nu traces over the opening iterations (baseline
+        model), zoomed to the burn-in transient; cannot be rebuilt from
+        the CSVs, which hold only the retained post-burn-in thinned sample
     figures/mcmc/acf_{mu,sigma,nu}_lambda_0.10.png
         autocorrelation of each parameter on the RAW (unthinned) chain,
         showing the decay that justifies the choice of THIN
@@ -239,20 +239,30 @@ if __name__ == "__main__":
         print(f"{label:<14}{nu_summary['mean']:>10.4f}{nu_summary['sd']:>10.4f}"
               f"{nu_summary['ci_2.5']:>10.4f}{nu_summary['ci_97.5']:>10.4f}")
 
-    # 6. Burn-in trace figure (baseline model, full chain) -------------------
-    # Plots every iteration, burn-in included, so the discarded region can
-    # be inspected directly. Note this cannot be rebuilt from the CSVs:
-    # those hold only the retained (post-burn-in, thinned) sample.
+    # 6. Burn-in trace figure (baseline model) -------------------------------
+    # Zoomed to the opening iterations: nu descends from its start near 8
+    # to ~4 within a few dozen sweeps and sigma settles by ~120, so the
+    # whole N_BURNIN window would render as a flat band and hide the very
+    # transient this figure exists to show. Built from the in-memory chain
+    # -- the CSVs hold only the retained (post-burn-in, thinned) sample.
+    BURNIN_SHOW = 500
+    burnin_labels = {
+        "mu": r"$\mu$ (location)",
+        "sigma": r"$\sigma$ (scale)",
+        "nu": r"$\nu$ (degrees of freedom)",
+    }
     burnin_trace_plot(
-        {
-            r"$\mu$ (location)": baseline_full_chain["mu"],
-            r"$\sigma$ (scale)": baseline_full_chain["sigma"],
-            r"$\nu$ (degrees of freedom)": baseline_full_chain["nu"],
-        },
+        {burnin_labels[p]: baseline_full_chain[p] for p in burnin_labels},
         n_burnin=N_BURNIN,
         out_path=FIGURES_DIR / "burnin_trace_lambda_0.10.png",
-        title=("MCMC Trace Plots with Burn-in Period — Bayesian Student-t "
-               "Model of GLD Daily Log Returns"),
+        title=("MCMC Burn-in Traces (first "
+               f"{BURNIN_SHOW:,} of {N_ITER:,} iterations) — Bayesian "
+               "Student-t Model of GLD Daily Log Returns"),
+        n_show=BURNIN_SHOW,
+        settled_values={
+            burnin_labels[p]: summaries["lambda_0.10"][p]["mean"]
+            for p in burnin_labels
+        },
     )
 
     # 7. Autocorrelation diagnostic (baseline model) -------------------------
