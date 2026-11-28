@@ -24,6 +24,10 @@ Outputs:
         per-experiment trace plot of nu
     figures/mcmc/nu_posterior_by_lambda.png
         overlaid pooled post-burn-in nu posterior density by lambda
+    figures/mcmc/burnin_trace_lambda_0.10.png
+        stacked mu/sigma/nu traces over ALL iterations (baseline model),
+        shading the burn-in period; cannot be rebuilt from the CSVs,
+        which hold only the retained post-burn-in thinned sample
     figures/mcmc/acf_{mu,sigma,nu}_lambda_0.10.png
         autocorrelation of each parameter on the RAW (unthinned) chain,
         showing the decay that justifies the choice of THIN
@@ -58,7 +62,7 @@ if str(PROJECT_DIR) not in sys.path:
 
 from src.mcmc import run_multiple_chains  # noqa: E402
 from src.diagnostics import (summarize_posterior, trace_plot, acf_plot,  # noqa: E402
-                             autocorrelation)
+                             autocorrelation, burnin_trace_plot)
 
 # RUN_MCMC_FAST=1 runs a quick debug pass (fewer iterations, baseline
 # experiment only -- see below). Debug output goes to separate *_debug
@@ -188,6 +192,10 @@ if __name__ == "__main__":
                 param: [r[param][N_BURNIN:] for r in results]
                 for param in ("mu", "sigma", "nu")
             }
+            # Complete chain (burn-in included) for the burn-in trace figure.
+            baseline_full_chain = {
+                param: results[0][param] for param in ("mu", "sigma", "nu")
+            }
 
         param_summaries = {
             param: summarize_posterior(chains)
@@ -231,7 +239,23 @@ if __name__ == "__main__":
         print(f"{label:<14}{nu_summary['mean']:>10.4f}{nu_summary['sd']:>10.4f}"
               f"{nu_summary['ci_2.5']:>10.4f}{nu_summary['ci_97.5']:>10.4f}")
 
-    # 6. Autocorrelation diagnostic (baseline model) -------------------------
+    # 6. Burn-in trace figure (baseline model, full chain) -------------------
+    # Plots every iteration, burn-in included, so the discarded region can
+    # be inspected directly. Note this cannot be rebuilt from the CSVs:
+    # those hold only the retained (post-burn-in, thinned) sample.
+    burnin_trace_plot(
+        {
+            r"$\mu$ (location)": baseline_full_chain["mu"],
+            r"$\sigma$ (scale)": baseline_full_chain["sigma"],
+            r"$\nu$ (degrees of freedom)": baseline_full_chain["nu"],
+        },
+        n_burnin=N_BURNIN,
+        out_path=FIGURES_DIR / "burnin_trace_lambda_0.10.png",
+        title=("MCMC Trace Plots with Burn-in Period — Bayesian Student-t "
+               "Model of GLD Daily Log Returns"),
+    )
+
+    # 7. Autocorrelation diagnostic (baseline model) -------------------------
     # The ACF is plotted on the RAW (unthinned) post-burn-in chain: that is
     # what shows the decay and justifies the choice of THIN. The ESS check
     # below is on the retained (thinned) sample -- a ratio near 1.0 confirms
@@ -277,7 +301,7 @@ if __name__ == "__main__":
     plt.savefig(FIGURES_DIR / "acf_comparison_lambda_0.10.png", dpi=150)
     plt.close()
 
-    # 7. Prior vs. posterior comparison for mu, sigma, nu (baseline model) ----
+    # 8. Prior vs. posterior comparison for mu, sigma, nu (baseline model) ----
     # Shows how the observed GLD returns update each parameter's prior
     # (initial) beliefs into its posterior (updated) beliefs.
     baseline_mu = np.concatenate(baseline_param_chains["mu"])

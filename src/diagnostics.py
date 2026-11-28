@@ -10,6 +10,7 @@ Functions:
     effective_sample_size -- ESS via Geyer's initial monotone sequence
     trace_plot             -- overlay of per-chain traces, saved to disk
     acf_plot               -- bar plot of a chain's autocorrelation function
+    burnin_trace_plot      -- stacked full-chain traces marking burn-in
     summarize_posterior    -- pooled mean/sd/CI plus ess for one param
 """
 
@@ -19,6 +20,7 @@ import numpy as np
 import matplotlib
 matplotlib.use("Agg")
 import matplotlib.pyplot as plt
+from matplotlib.ticker import FuncFormatter
 
 
 def autocorrelation(chain: np.ndarray, max_lag: int) -> np.ndarray:
@@ -123,6 +125,63 @@ def acf_plot(chain: np.ndarray, param_name: str, out_path: Path,
     plt.title(f"Autocorrelation: {param_name}")
     plt.savefig(out_path, dpi=150)
     plt.close()
+
+
+def burnin_trace_plot(draws: dict[str, np.ndarray], n_burnin: int,
+                      out_path: Path, title: str | None = None) -> None:
+    """
+    Stacked full-chain trace plots marking the burn-in period.
+
+    One vertically stacked subplot per entry in `draws`, all sharing the
+    iteration axis. Iterations 1..n_burnin are shaded and drawn in a
+    separate colour from the retained posterior-sampling region, with a
+    dashed line at the boundary. Samples are plotted exactly as drawn --
+    no smoothing, subsampling, or transformation.
+
+    Parameters:
+    - draws: {display label: 1-D array of ALL iterations (burn-in first)},
+      in the order the subplots should appear
+    - n_burnin: number of leading iterations treated as burn-in
+    - out_path: file path to save the figure to
+    - title: optional figure title
+    """
+    burnin_color = "#c44e52"
+    posterior_color = "#2d6da4"
+
+    fig, axes = plt.subplots(len(draws), 1, figsize=(12, 9), sharex=True)
+
+    for ax, (label, chain) in zip(np.atleast_1d(axes), draws.items()):
+        iterations = np.arange(1, len(chain) + 1)
+
+        ax.axvspan(1, n_burnin, color=burnin_color, alpha=0.12, zorder=0,
+                   label=f"Burn-in (1–{n_burnin:,})")
+        ax.plot(iterations[:n_burnin], chain[:n_burnin], color=burnin_color,
+                linewidth=0.3, zorder=1)
+        ax.plot(iterations[n_burnin:], chain[n_burnin:], color=posterior_color,
+                linewidth=0.3, zorder=1,
+                label=f"Posterior sampling ({n_burnin + 1:,}–{len(chain):,})")
+        ax.axvline(n_burnin, color="black", linestyle="--", linewidth=1.2,
+                   zorder=2, label=f"End of burn-in (iteration {n_burnin:,})")
+
+        ax.set_ylabel(label)
+        ax.margins(x=0)
+        ax.grid(alpha=0.2, linewidth=0.5)
+
+    axes[-1].set_xlabel("MCMC iteration")
+    axes[-1].xaxis.set_major_formatter(FuncFormatter(lambda v, _: f"{int(v):,}"))
+
+    # One legend for the whole figure: every subplot shares these regions.
+    handles, labels = axes[0].get_legend_handles_labels()
+    legend = fig.legend(handles, labels, loc="upper center", ncol=3,
+                        frameon=True, bbox_to_anchor=(0.5, 0.955))
+    for line in legend.get_lines():
+        line.set_linewidth(2.0)  # thin trace lines are illegible in a legend
+
+    if title is not None:
+        fig.suptitle(title, y=0.995)
+    fig.tight_layout(rect=(0, 0, 1, 0.93))
+    fig.savefig(out_path, dpi=200)
+    plt.close(fig)
 
 
 def summarize_posterior(chains: list[np.ndarray]) -> dict:
