@@ -1,17 +1,16 @@
 """
 MCMC Convergence Diagnostics
 
-Standard diagnostics for assessing mixing/convergence of multiple
-Metropolis-within-Gibbs chains (see src/mcmc.py) and for summarizing
-their pooled post-burn-in posterior draws.
+Standard diagnostics for assessing mixing of Metropolis-within-Gibbs
+chains (see src/mcmc.py) and for summarizing their pooled post-burn-in
+posterior draws.
 
 Functions:
-    r_hat                 -- Gelman-Rubin potential scale reduction factor
     autocorrelation       -- sample ACF of a chain at lags 0..max_lag
     effective_sample_size -- ESS via Geyer's initial monotone sequence
     trace_plot             -- overlay of per-chain traces, saved to disk
     acf_plot               -- bar plot of a chain's autocorrelation function
-    summarize_posterior    -- pooled mean/sd/CI plus r_hat/ess for one param
+    summarize_posterior    -- pooled mean/sd/CI plus ess for one param
 """
 
 from pathlib import Path
@@ -20,37 +19,6 @@ import numpy as np
 import matplotlib
 matplotlib.use("Agg")
 import matplotlib.pyplot as plt
-
-
-def r_hat(chains: list[np.ndarray]) -> float:
-    """
-    Classic Gelman-Rubin potential scale reduction factor across
-    `len(chains)` equal-length chains of post-burn-in draws.
-
-    Parameters:
-    - chains: list of 1-D arrays, all the same length n
-
-    Returns:
-    - sqrt(((n-1)/n * W + B/n) / W), or NaN if fewer than 2 chains are
-      given (R-hat is undefined with a single chain -- there is no
-      between-chain variance to compare against)
-    """
-    m = len(chains)
-    if m < 2:
-        return float("nan")
-
-    n = len(chains[0])
-
-    chain_means = np.array([chain.mean() for chain in chains])
-    chain_vars = np.array([chain.var(ddof=1) for chain in chains])
-
-    overall_mean = chain_means.mean()
-
-    B = n / (m - 1) * np.sum((chain_means - overall_mean) ** 2)
-    W = chain_vars.mean()
-
-    var_hat = (n - 1) / n * W + B / n
-    return float(np.sqrt(var_hat / W))
 
 
 def autocorrelation(chain: np.ndarray, max_lag: int) -> np.ndarray:
@@ -166,7 +134,7 @@ def summarize_posterior(chains: list[np.ndarray]) -> dict:
       for one parameter, one array per chain
 
     Returns:
-    - dict with keys "mean", "sd", "ci_2.5", "ci_97.5", "r_hat", "ess"
+    - dict with keys "mean", "sd", "ci_2.5", "ci_97.5", "ess"
       (mean/sd/CI pool all chains' draws; ess is the average of
       effective_sample_size over the individual chains)
     """
@@ -179,6 +147,5 @@ def summarize_posterior(chains: list[np.ndarray]) -> dict:
         "sd": float(pooled.std(ddof=1)),
         "ci_2.5": float(np.percentile(pooled, 2.5)),
         "ci_97.5": float(np.percentile(pooled, 97.5)),
-        "r_hat": r_hat(chains),
         "ess": float(np.mean(ess_values)),
     }

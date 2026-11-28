@@ -11,10 +11,6 @@ sensitivity values lambda=0.05 and lambda=0.2 -- to check whether
 posterior conclusions about nu (tail-heaviness) are sensitive to this
 one prior hyperparameter.
 
-Note: with a single chain, R-hat (which compares between-chain and
-within-chain variance) is undefined and reported as NaN -- see
-src/diagnostics.py.
-
 Input:
     data/GLD_returns.csv
 
